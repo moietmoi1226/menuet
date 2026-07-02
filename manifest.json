@@ -1,0 +1,14 @@
+{
+  "name": "Menuet",
+  "short_name": "Menuet",
+  "description": "献立・レシピ管理アプリ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fffbeb",
+  "theme_color": "#f59e0b",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

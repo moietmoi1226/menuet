@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Menuet</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#f59e0b" />
+
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Menuet" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .meal-slot { min-height: 52px; }
+    input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
+    .fade-in { animation: fadeIn 0.18s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .modal-bg { backdrop-filter: blur(2px); }
+    ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:#f1f5f9; } ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+    .step-num { min-width:24px; height:24px; }
+    .tab-btn.active { background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.1); color:#059669; font-weight:600; }
+    .recipe-img { aspect-ratio:4/3; object-fit:cover; }
+    .photo-drop { transition: border-color .15s, background .15s; }
+    .photo-drop.drag-over { border-color:#f59e0b; background:#fffbeb; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-800 min-h-screen font-sans">
+
+<!-- ===== NAVIGATION ===== -->
+<header class="bg-white border-b border-stone-100 sticky top-0 z-40">
+  <div class="max-w-5xl mx-auto px-4 flex items-center justify-between h-14">
+    <div class="flex items-center gap-1.5">
+      <span class="text-amber-400 text-lg leading-none">♩</span>
+      <span class="font-bold text-stone-800 tracking-widest text-base uppercase" style="letter-spacing:.15em;">Menuet</span>
+    </div>
+    <nav class="flex gap-0.5">
+      <button onclick="switchTab('recipe')" id="nav-recipe" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">レシピ</button>
+      <button onclick="switchTab('calendar')" id="nav-calendar" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">カレンダー</button>
+      <button onclick="switchTab('shopping')" id="nav-shopping" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">買い物</button>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-3 py-5">
+
+<!-- ===================== RECIPE TAB ===================== -->
+<section id="tab-recipe" class="tab-section hidden fade-in">
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <h2 class="text-xl font-bold flex-1">レシピ一覧</h2>
+    <button onclick="openRecipeModal(null,'import')" class="flex items-center gap-1.5 bg-violet-500 hover:bg-violet-600 text-white text-sm px-4 py-2 rounded-lg font-medium shadow-sm transition">
+      📋 AIテキストからインポート
+    </button>
+    <button onclick="openRecipeModal()" class="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium shadow-sm transition">＋ 手動追加</button>
+  </div>
+  <div class="flex gap-2 mb-4">
+    <input id="recipe-search" oninput="renderRecipes()" type="text" placeholder="レシピ名で検索…" class="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+    <select id="recipe-filter-cat" onchange="renderRecipes()" class="border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white">
+      <option value="">全カテゴリ</option>
+      <option>主菜</option><option>副菜</option><option>汁物</option><option>主食</option><option>デザート</option><option>その他</option>
+    </select>
+  </div>
+  <div id="recipe-list" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+  <p id="recipe-empty" class="text-center text-stone-400 py-12 hidden">レシピがまだありません。</p>
+</section>
+
+<!-- ===================== CALENDAR TAB ===================== -->
+<section id="tab-calendar" class="tab-section hidden fade-in">
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <h2 class="text-xl font-bold flex-1">献立カレンダー</h2>
+    <div class="flex gap-1 bg-stone-100 rounded-lg p-0.5">
+      <button onclick="setCalView('week')" id="cal-btn-week" class="cal-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition">週</button>
+      <button onclick="setCalView('month')" id="cal-btn-month" class="cal-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition">月</button>
+    </div>
+    <button onclick="calNav(-1)" class="p-2 rounded-lg hover:bg-stone-100 transition text-stone-600">◀</button>
+    <span id="cal-title" class="font-semibold text-sm min-w-[110px] text-center"></span>
+    <button onclick="calNav(1)" class="p-2 rounded-lg hover:bg-stone-100 transition text-stone-600">▶</button>
+    <button onclick="calToday()" class="text-sm px-3 py-1.5 border border-stone-200 rounded-lg hover:bg-stone-100 transition">今日</button>
+  </div>
+  <div id="calendar-grid" class="overflow-x-auto"></div>
+</section>
+
+<!-- ===================== SHOPPING TAB ===================== -->
+<section id="tab-shopping" class="tab-section hidden fade-in">
+  <h2 class="text-xl font-bold mb-4">買い物リスト</h2>
+  <div class="bg-white rounded-2xl shadow-sm border border-stone-100 p-4 mb-4">
+    <p class="text-sm font-medium text-stone-600 mb-2">期間を選択して自動生成</p>
+    <div class="flex flex-wrap gap-2 items-end">
+      <div><label class="text-xs text-stone-500">開始日</label><input id="shop-from" type="date" class="block border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" /></div>
+      <div><label class="text-xs text-stone-500">終了日</label><input id="shop-to" type="date" class="block border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" /></div>
+      <button onclick="generateShopping()" class="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium shadow-sm transition">生成</button>
+    </div>
+  </div>
+  <div id="shopping-list-wrap" class="hidden">
+    <div class="flex items-center justify-between mb-2">
+      <p class="font-semibold text-stone-700">買い物リスト</p>
+      <div class="flex gap-2">
+        <button onclick="clearChecked()" class="text-xs border border-stone-200 hover:bg-stone-100 px-3 py-1.5 rounded-lg transition">チェック済を削除</button>
+      </div>
+    </div>
+    <div id="shopping-list" class="bg-white rounded-2xl shadow-sm border border-stone-100 divide-y divide-stone-50"></div>
+  </div>
+</section>
+
+
+</main>
+
+<!-- ====================================================== -->
+<!-- MODALS -->
+<!-- ====================================================== -->
+
+<!-- Recipe Modal (手動入力 + AIインポート 共用) -->
+<div id="recipe-modal" class="fixed inset-0 z-50 hidden modal-bg bg-black/30 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+      <h3 id="recipe-modal-title" class="font-bold text-lg">レシピを追加</h3>
+      <button onclick="closeRecipeModal()" class="text-stone-400 hover:text-stone-600 text-xl leading-none">✕</button>
+    </div>
+
+    <!-- Mode Toggle Tabs -->
+    <div class="flex gap-1 bg-stone-100 rounded-xl m-4 mb-0 p-1">
+      <button id="tab-import-btn" onclick="setRecipeTab('import')" class="tab-btn flex-1 py-2 text-sm rounded-lg transition text-stone-500">📋 AIインポート</button>
+      <button id="tab-manual-btn" onclick="setRecipeTab('manual')" class="tab-btn flex-1 py-2 text-sm rounded-lg transition text-stone-500">✏️ 手動入力</button>
+    </div>
+
+    <!-- ===== IMPORT PANEL ===== -->
+    <div id="panel-import" class="overflow-y-auto flex-1 p-5 space-y-4">
+
+      <!-- Step 1: Claude に渡すプロンプトをコピー -->
+      <div class="bg-violet-50 border border-violet-100 rounded-xl p-4">
+        <p class="text-sm font-semibold text-violet-800 mb-1">① まずClaudeに聞く</p>
+        <p class="text-xs text-violet-600 leading-relaxed mb-3">
+          このチャット画面で料理本の写真やURLを貼り付け、以下のプロンプトを一緒に送ってください。
+          Claudeが決まった形式でレシピを返してくれます。
+        </p>
+        <div class="bg-white border border-violet-200 rounded-lg p-3 text-xs text-stone-600 font-mono leading-relaxed whitespace-pre-wrap" id="prompt-template">以下のレシピを、下記の形式で出力してください。コードブロックは使わず、プレーンテキストで出力してください。
+
+レシピ名: （料理名）
+カテゴリ: （主菜／副菜／汁物／主食／デザート／その他 から1つ）
+参照元: （本のタイトルとページ数、またはURL）
+食材:
+- （食材名）: （分量）
+- （食材名）: （分量）
+作り方:
+1. （手順1）
+2. （手順2）
+メモ: （コツや備考があれば）</div>
+        <button onclick="copyPrompt()" id="copy-prompt-btn" class="mt-3 w-full text-sm bg-violet-500 hover:bg-violet-600 text-white py-2 rounded-lg font-medium transition">
+          📋 プロンプトをコピー
+        </button>
+      </div>
+
+      <!-- Step 2: 貼り付けてインポート -->
+      <div>
+        <p class="text-sm font-semibold text-stone-700 mb-1">② Claudeの返答をここに貼り付ける</p>
+        <p class="text-xs text-stone-400 mb-2">Claudeが出力したテキストをそのままペーストして「インポート」を押してください。</p>
+        <textarea id="import-textarea" rows="12" placeholder="レシピ名: 鶏の唐揚げ
+カテゴリ: 主菜
+参照元: 〇〇料理本 p.42
+食材:
+- 鶏もも肉: 300g
+- 醤油: 大さじ2
+作り方:
+1. 鶏肉を一口大に切り、調味料に30分漬ける。
+2. 170℃の油で4〜5分揚げる。
+メモ: 二度揚げするとカリッと仕上がります。" class="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 leading-relaxed font-mono"></textarea>
+        <div id="import-error" class="hidden mt-2 text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2"></div>
+      </div>
+
+      <button onclick="runImport()" class="w-full bg-violet-500 hover:bg-violet-600 text-white py-2.5 rounded-xl font-semibold text-sm transition shadow-sm">
+        インポートして編集画面へ →
+      </button>
+    </div>
+
+    <!-- ===== MANUAL PANEL ===== -->
+    <div id="panel-manual" class="overflow-y-auto flex-1 p-5 space-y-3 hidden">
+      <input type="hidden" id="recipe-edit-id" />
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">レシピ名 <span class="text-red-400">*</span></label>
+        <input id="r-name" type="text" class="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" placeholder="例：鶏の唐揚げ" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">カテゴリ</label>
+        <select id="r-cat" class="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white">
+          <option>主菜</option><option>副菜</option><option>汁物</option><option>主食</option><option>デザート</option><option>その他</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">参照元（料理本名・ページ、またはURL）</label>
+        <input id="r-source" type="text" class="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" placeholder="例：〇〇の料理本 p.42 / https://..." />
+      </div>
+      <!-- 写真 -->
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">料理の写真</label>
+        <div id="photo-drop-zone" class="photo-drop border-2 border-dashed border-stone-200 rounded-xl overflow-hidden cursor-pointer hover:border-amber-300 hover:bg-amber-50/40"
+          onclick="document.getElementById('r-photo-input').click()"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="handlePhotoDrop(event)">
+          <div id="photo-placeholder" class="flex flex-col items-center justify-center py-6 gap-2">
+            <span class="text-3xl">📷</span>
+            <p class="text-xs text-stone-400">クリックまたはドラッグで写真を追加</p>
+            <p class="text-xs text-stone-300">JPG / PNG / HEIC（自動圧縮されます）</p>
+          </div>
+          <div id="photo-preview-wrap" class="hidden relative">
+            <img id="r-photo-preview" class="recipe-img w-full" />
+            <button onclick="event.stopPropagation();clearPhoto()" class="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm transition">✕</button>
+          </div>
+        </div>
+        <input id="r-photo-input" type="file" accept="image/*" class="hidden" onchange="handlePhotoSelect(event)" />
+        <input type="hidden" id="r-photo-data" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">食材リスト</label>
+        <div id="ingredient-rows" class="space-y-2 mb-2"></div>
+        <button onclick="addIngredientRow()" class="text-xs text-amber-600 hover:text-amber-700 font-medium">＋ 食材を追加</button>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">作り方</label>
+        <div id="step-rows" class="space-y-2 mb-2"></div>
+        <button onclick="addStepRow()" class="text-xs text-amber-600 hover:text-amber-700 font-medium">＋ 手順を追加</button>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-stone-500 mb-1">メモ・備考</label>
+        <textarea id="r-memo" rows="2" class="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" placeholder="調理のコツ、保存方法など"></textarea>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="px-5 py-4 border-t border-stone-100 flex justify-end gap-2">
+      <button onclick="closeRecipeModal()" class="px-4 py-2 text-sm border border-stone-200 rounded-lg hover:bg-stone-50 transition">キャンセル</button>
+      <button id="save-recipe-btn" onclick="saveRecipe()" class="hidden px-5 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium transition">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Recipe Detail Modal -->
+<div id="detail-modal" class="fixed inset-0 z-50 hidden modal-bg bg-black/30 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+      <h3 id="detail-title" class="font-bold text-lg pr-4 leading-tight"></h3>
+      <button onclick="closeDetail()" class="text-stone-400 hover:text-stone-600 text-xl leading-none flex-shrink-0">✕</button>
+    </div>
+    <div id="detail-body" class="overflow-y-auto p-5 space-y-4 flex-1"></div>
+    <div class="px-5 py-3 border-t border-stone-100 flex gap-2">
+      <button id="detail-edit-btn" class="flex-1 text-sm border border-stone-200 rounded-lg py-2 hover:bg-stone-50 transition font-medium">編集</button>
+      <button onclick="closeDetail()" class="flex-1 text-sm bg-stone-100 hover:bg-stone-200 rounded-lg py-2 font-medium transition">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- Meal Picker Modal -->
+<div id="meal-modal" class="fixed inset-0 z-50 hidden modal-bg bg-black/30 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+      <h3 id="meal-modal-title" class="font-bold">レシピを選択</h3>
+      <button onclick="closeMealModal()" class="text-stone-400 hover:text-stone-600 text-xl leading-none">✕</button>
+    </div>
+    <div class="p-3">
+      <input id="meal-search" oninput="renderMealPicker()" type="text" placeholder="レシピ名で検索…" class="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+    </div>
+    <div id="meal-picker-list" class="overflow-y-auto flex-1 px-3 pb-3 space-y-1"></div>
+    <div class="px-5 py-3 border-t border-stone-100">
+      <button onclick="clearMealSlot()" class="w-full text-sm text-red-400 hover:text-red-500 py-1 transition">この枠を削除</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] hidden">
+  <div id="toast-msg" class="bg-stone-800 text-white text-sm px-5 py-2.5 rounded-full shadow-lg"></div>
+</div>
+
+<script>
+// ===== STATE =====
+let recipes     = JSON.parse(localStorage.getItem('recipes')      || '[]');
+let meals       = JSON.parse(localStorage.getItem('meals')        || '{}');
+let shoppingList= JSON.parse(localStorage.getItem('shoppingList') || '[]');
+
+let calView = 'week';
+let calAnchor = new Date(); calAnchor.setHours(0,0,0,0);
+let currentMealKey = null;
+let currentPhotoData = ''; // base64 of current photo being edited
+
+const save = () => {
+  localStorage.setItem('recipes',      JSON.stringify(recipes));
+  localStorage.setItem('meals',        JSON.stringify(meals));
+  localStorage.setItem('shoppingList', JSON.stringify(shoppingList));
+};
+
+// ===== TOAST =====
+let toastTimer;
+function toast(msg, color='bg-stone-800') {
+  const el=document.getElementById('toast'), me=document.getElementById('toast-msg');
+  me.textContent=msg;
+  me.className=`${color} text-white text-sm px-5 py-2.5 rounded-full shadow-lg`;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.add('hidden'), 2800);
+}
+
+// ===== TABS =====
+function switchTab(tab) {
+  document.querySelectorAll('.tab-section').forEach(s=>s.classList.add('hidden'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('bg-amber-50','text-amber-700','font-semibold'));
+  document.getElementById('tab-'+tab).classList.remove('hidden');
+  document.getElementById('nav-'+tab).classList.add('bg-amber-50','text-amber-700','font-semibold');
+  if(tab==='recipe')   renderRecipes();
+  if(tab==='calendar') renderCalendar();
+  if(tab==='shopping') renderShoppingList();
+}
+
+// ===== UTILS =====
+const uid = () => '_'+Math.random().toString(36).slice(2,9);
+const fmtDate = d => {
+  const dt=new Date(d);
+  return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+};
+const jpWeek = ['日','月','火','水','木','金','土'];
+const catColor = {
+  主菜:'bg-rose-100 text-rose-700', 副菜:'bg-amber-100 text-amber-700',
+  汁物:'bg-sky-100 text-sky-700',   主食:'bg-violet-100 text-violet-700',
+  デザート:'bg-pink-100 text-pink-700', その他:'bg-stone-100 text-stone-600'
+};
+function escHtml(s='') {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ===== PHOTO HANDLING =====
+async function compressImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 900;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
+        else        { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhotoSelect(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const data = await compressImage(file);
+  setPhotoPreview(data);
+}
+
+function handlePhotoDrop(e) {
+  e.preventDefault();
+  document.getElementById('photo-drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  compressImage(file).then(setPhotoPreview);
+}
+
+function setPhotoPreview(data) {
+  currentPhotoData = data;
+  document.getElementById('r-photo-data').value = data;
+  document.getElementById('r-photo-preview').src = data;
+  document.getElementById('photo-placeholder').classList.add('hidden');
+  document.getElementById('photo-preview-wrap').classList.remove('hidden');
+}
+
+function clearPhoto() {
+  currentPhotoData = '';
+  document.getElementById('r-photo-data').value = '';
+  document.getElementById('r-photo-preview').src = '';
+  document.getElementById('photo-placeholder').classList.remove('hidden');
+  document.getElementById('photo-preview-wrap').classList.add('hidden');
+  document.getElementById('r-photo-input').value = '';
+}
+
+// ===== RECIPE MODAL (shared) =====
+function openRecipeModal(id, startTab) {
+  const editId = id || '';
+  document.getElementById('recipe-edit-id').value = editId;
+  document.getElementById('recipe-modal-title').textContent = id ? 'レシピを編集' : 'レシピを追加';
+
+  const r = id ? recipes.find(x=>x.id===id) : null;
+
+  // populate manual fields
+  document.getElementById('r-name').value   = r ? r.name   : '';
+  document.getElementById('r-cat').value    = r ? r.cat    : '主菜';
+  document.getElementById('r-source').value = r ? r.source : '';
+  document.getElementById('r-memo').value   = r ? r.memo   : '';
+  document.getElementById('ingredient-rows').innerHTML = '';
+  (r ? r.ingredients : []).forEach(ing => addIngredientRow(ing));
+  document.getElementById('step-rows').innerHTML = '';
+  (r ? r.steps||[] : []).forEach(s => addStepRow(s));
+
+  // photo
+  if (r && r.photo) { setPhotoPreview(r.photo); }
+  else { clearPhoto(); }
+
+  // clear import textarea
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-error').classList.add('hidden');
+
+  // decide which tab to show
+  const tab = startTab || (id ? 'manual' : 'import');
+  setRecipeTab(tab);
+
+  document.getElementById('recipe-modal').classList.remove('hidden');
+}
+function closeRecipeModal() { document.getElementById('recipe-modal').classList.add('hidden'); }
+
+function setRecipeTab(tab) {
+  const isManual = tab==='manual';
+  document.getElementById('panel-import').classList.toggle('hidden',  isManual);
+  document.getElementById('panel-manual').classList.toggle('hidden',  !isManual);
+  document.getElementById('tab-import-btn').classList.toggle('active',!isManual);
+  document.getElementById('tab-manual-btn').classList.toggle('active', isManual);
+  document.getElementById('save-recipe-btn').classList.toggle('hidden',!isManual);
+}
+
+// ===== COPY PROMPT =====
+function copyPrompt() {
+  const text = document.getElementById('prompt-template').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = document.getElementById('copy-prompt-btn');
+    btn.textContent = '✅ コピーしました！';
+    setTimeout(()=>{ btn.textContent='📋 プロンプトをコピー'; }, 2000);
+  }).catch(()=>toast('コピーに失敗しました','bg-red-500'));
+}
+
+// ===== TEXT IMPORT / PARSER =====
+function runImport() {
+  const raw = document.getElementById('import-textarea').value.trim();
+  const errEl = document.getElementById('import-error');
+  errEl.classList.add('hidden');
+
+  if (!raw) {
+    errEl.textContent = 'テキストが入力されていません。Claudeの返答を貼り付けてください。';
+    errEl.classList.remove('hidden'); return;
+  }
+
+  const parsed = parseRecipeText(raw);
+  if (!parsed.name) {
+    errEl.textContent = '「レシピ名:」が見つかりませんでした。形式を確認してください。';
+    errEl.classList.remove('hidden'); return;
+  }
+
+  // Fill manual form
+  document.getElementById('r-name').value   = parsed.name;
+  document.getElementById('r-cat').value    = parsed.cat || '主菜';
+  document.getElementById('r-source').value = parsed.source || '';
+  document.getElementById('r-memo').value   = parsed.memo || '';
+
+  document.getElementById('ingredient-rows').innerHTML = '';
+  parsed.ingredients.forEach(ing => addIngredientRow(ing));
+
+  document.getElementById('step-rows').innerHTML = '';
+  parsed.steps.forEach(s => addStepRow(s));
+
+  // Switch to manual tab for review
+  setRecipeTab('manual');
+  toast('✅ インポート完了！内容を確認して保存してください。');
+}
+
+function parseRecipeText(text) {
+  const result = { name:'', cat:'', source:'', memo:'', ingredients:[], steps:[] };
+  const lines = text.split('\n');
+
+  let section = null; // 'ing' | 'steps' | null
+
+  const fieldMap = {
+    'レシピ名': 'name', 'recipe name': 'name',
+    'カテゴリ': 'cat',  'category': 'cat',
+    '参照元': 'source', 'source': 'source', '出典': 'source',
+    'メモ': 'memo',     'note': 'memo', '備考': 'memo', 'コツ': 'memo',
+  };
+  const sectionMap = {
+    '食材': 'ing',   '材料': 'ing',   'ingredients': 'ing', '食材リスト': 'ing',
+    '作り方': 'steps','手順': 'steps', 'steps': 'steps',    '調理手順': 'steps',
+  };
+
+  for (let raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    // Check for section header  (e.g. "食材:" or "作り方:")
+    const secMatch = line.match(/^([^:：]+)[：:]?\s*$/);
+    if (secMatch) {
+      const key = secMatch[1].trim().toLowerCase().replace(/\s+/g,'');
+      // normalize
+      const normKey = Object.keys(sectionMap).find(k => line.replace(/[：:]/g,'').trim() === k || key === k.toLowerCase());
+      if (normKey) { section = sectionMap[normKey]; continue; }
+    }
+
+    // Key: Value line
+    const kvMatch = line.match(/^([^:：\-\d]+)[：:]\s*(.*)$/);
+    if (kvMatch) {
+      const rawKey = kvMatch[1].trim();
+      const val    = kvMatch[2].trim();
+      // Check if it's a section header
+      const normSec = Object.keys(sectionMap).find(k => rawKey === k);
+      if (normSec) { section = sectionMap[normSec]; if(val) { /* section with inline value – rare */ } continue; }
+      // Check field
+      const normField = Object.keys(fieldMap).find(k => rawKey === k || rawKey.toLowerCase() === k.toLowerCase());
+      if (normField) { result[fieldMap[normField]] = val; section = null; continue; }
+      // Inside ingredient section — treat as "name: qty"
+      if (section === 'ing') {
+        result.ingredients.push({ name: rawKey, qty: val }); continue;
+      }
+    }
+
+    // Ingredient list item: "- 食材: 分量" or "- 食材 分量"
+    if (section === 'ing') {
+      const ingLine = line.replace(/^[-・•＊*]\s*/, '');
+      const ingKv = ingLine.match(/^(.+?)[：:]\s*(.+)$/);
+      if (ingKv) {
+        result.ingredients.push({ name: ingKv[1].trim(), qty: ingKv[2].trim() });
+      } else if (ingLine) {
+        // space-separated fallback "鶏もも肉 300g"
+        const sp = ingLine.match(/^(.+?)\s{2,}(.+)$/) || ingLine.match(/^(.+?[^\d])\s+([\d].*)$/);
+        if (sp) result.ingredients.push({ name: sp[1].trim(), qty: sp[2].trim() });
+        else result.ingredients.push({ name: ingLine, qty: '' });
+      }
+      continue;
+    }
+
+    // Step item: "1. ..." or "① ..." or "・..."
+    if (section === 'steps') {
+      const stepLine = line.replace(/^[\d０-９]+[\.．。\)）]\s*/, '')
+                           .replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, '')
+                           .replace(/^[-・•]\s*/, '');
+      if (stepLine) result.steps.push(stepLine);
+      continue;
+    }
+
+    // Numbered line anywhere (fallback step detection)
+    const numLine = line.match(/^[\d０-９]+[\.．。\)）]\s+(.+)$/);
+    if (numLine) { result.steps.push(numLine[1].trim()); continue; }
+  }
+
+  return result;
+}
+
+// ===== INGREDIENT / STEP ROW BUILDERS =====
+function addIngredientRow(ing) {
+  const rows = document.getElementById('ingredient-rows');
+  const d = document.createElement('div'); d.className='flex gap-2 items-center';
+  d.innerHTML=`
+    <input type="text" placeholder="食材名" value="${ing?escHtml(ing.name):''}"
+      class="flex-1 border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 ing-name" />
+    <input type="text" placeholder="分量" value="${ing?escHtml(ing.qty):''}"
+      class="w-24 border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 ing-qty" />
+    <button onclick="this.parentElement.remove()" class="text-stone-300 hover:text-red-400 transition text-lg leading-none flex-shrink-0">✕</button>`;
+  rows.appendChild(d);
+}
+
+function addStepRow(text) {
+  const rows = document.getElementById('step-rows');
+  const num  = rows.querySelectorAll('.step-row').length + 1;
+  const d = document.createElement('div'); d.className='flex gap-2 items-start step-row';
+  d.innerHTML=`
+    <span class="step-num flex-shrink-0 bg-stone-100 text-stone-500 text-xs font-bold rounded-full flex items-center justify-center mt-1">${num}</span>
+    <textarea rows="2" placeholder="手順${num}の説明"
+      class="flex-1 border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 step-text leading-relaxed">${text?escHtml(text):''}</textarea>
+    <button onclick="this.parentElement.remove();reNumberSteps()" class="text-stone-300 hover:text-red-400 transition text-lg leading-none flex-shrink-0 mt-1">✕</button>`;
+  rows.appendChild(d);
+}
+
+function reNumberSteps() {
+  document.querySelectorAll('#step-rows .step-row').forEach((row,i)=>{
+    const s=row.querySelector('.step-num'); if(s) s.textContent=i+1;
+  });
+}
+
+// ===== SAVE RECIPE =====
+function saveRecipe() {
+  const name = document.getElementById('r-name').value.trim();
+  if (!name) { toast('レシピ名を入力してください','bg-red-500'); return; }
+  const ings  = [...document.querySelectorAll('#ingredient-rows > div')].map(d=>({
+    name: d.querySelector('.ing-name').value.trim(),
+    qty:  d.querySelector('.ing-qty').value.trim()
+  })).filter(i=>i.name);
+  const steps = [...document.querySelectorAll('#step-rows .step-text')].map(el=>el.value.trim()).filter(Boolean);
+  const id    = document.getElementById('recipe-edit-id').value;
+  const photo = document.getElementById('r-photo-data').value || '';
+  const rec   = {
+    id: id||uid(), name,
+    cat:    document.getElementById('r-cat').value,
+    source: document.getElementById('r-source').value.trim(),
+    memo:   document.getElementById('r-memo').value.trim(),
+    ingredients: ings, steps, photo
+  };
+  if (id) { const idx=recipes.findIndex(x=>x.id===id); recipes[idx]=rec; }
+  else     { recipes.push(rec); }
+  save(); closeRecipeModal(); renderRecipes();
+  toast(id ? 'レシピを更新しました' : 'レシピを追加しました');
+}
+
+function deleteRecipe(id) {
+  if (!confirm('このレシピを削除しますか？')) return;
+  recipes = recipes.filter(r=>r.id!==id);
+  Object.keys(meals).forEach(k=>{ if(meals[k]===id) delete meals[k]; });
+  save(); renderRecipes(); toast('削除しました');
+}
+
+// ===== RECIPE DETAIL MODAL =====
+function openDetail(id) {
+  const r = recipes.find(x=>x.id===id); if(!r) return;
+  document.getElementById('detail-title').textContent = r.name;
+  const cc = catColor[r.cat]||catColor['その他'];
+  const srcHtml = r.source
+    ? (r.source.startsWith('http')
+        ? `<a href="${escHtml(r.source)}" target="_blank" class="text-violet-500 underline break-all text-sm">${escHtml(r.source)}</a>`
+        : `<span class="text-sm text-stone-500">${escHtml(r.source)}</span>`)
+    : '';
+
+  let html = '';
+  if (r.photo) {
+    html += `<div class="-mx-5 -mt-5 mb-1"><img src="${r.photo}" class="w-full object-cover max-h-56" /></div>`;
+  }
+  html += `<div class="flex flex-wrap items-center gap-2">
+    <span class="text-xs px-2.5 py-1 rounded-full font-medium ${cc}">${escHtml(r.cat)}</span>
+    ${srcHtml}
+  </div>`;
+
+  if (r.ingredients && r.ingredients.length) {
+    html += `<div>
+      <p class="text-xs font-semibold text-stone-500 mb-2 uppercase tracking-wide">食材</p>
+      <div class="grid grid-cols-2 gap-1.5">
+        ${r.ingredients.map(i=>`
+          <div class="bg-stone-50 rounded-lg px-3 py-2 text-sm flex justify-between gap-2">
+            <span class="font-medium">${escHtml(i.name)}</span>
+            <span class="text-stone-400 flex-shrink-0">${escHtml(i.qty)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  if (r.steps && r.steps.length) {
+    html += `<div>
+      <p class="text-xs font-semibold text-stone-500 mb-2 uppercase tracking-wide">作り方</p>
+      <ol class="space-y-3">
+        ${r.steps.map((s,i)=>`
+          <li class="flex gap-3">
+            <span class="step-num flex-shrink-0 bg-amber-100 text-amber-700 text-xs font-bold rounded-full flex items-center justify-center">${i+1}</span>
+            <p class="text-sm leading-relaxed pt-0.5">${escHtml(s)}</p>
+          </li>`).join('')}
+      </ol>
+    </div>`;
+  }
+
+  if (r.memo) {
+    html += `<div class="bg-amber-50 rounded-xl p-3">
+      <p class="text-xs font-semibold text-amber-700 mb-1">メモ・備考</p>
+      <p class="text-sm text-amber-800 leading-relaxed">${escHtml(r.memo)}</p>
+    </div>`;
+  }
+
+  document.getElementById('detail-body').innerHTML = html;
+  document.getElementById('detail-edit-btn').onclick = () => { closeDetail(); openRecipeModal(r.id); };
+  document.getElementById('detail-modal').classList.remove('hidden');
+}
+function closeDetail() { document.getElementById('detail-modal').classList.add('hidden'); }
+
+// ===== RENDER RECIPES =====
+function renderRecipes() {
+  const q   = document.getElementById('recipe-search').value.toLowerCase();
+  const cat = document.getElementById('recipe-filter-cat').value;
+  const list  = document.getElementById('recipe-list');
+  const empty = document.getElementById('recipe-empty');
+  const filtered = recipes.filter(r=>(!q||r.name.toLowerCase().includes(q))&&(!cat||r.cat===cat));
+  list.innerHTML='';
+  empty.classList.toggle('hidden', filtered.length>0);
+
+  filtered.forEach(r=>{
+    const cc = catColor[r.cat]||catColor['その他'];
+    const card = document.createElement('div');
+    card.className='bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden flex flex-col hover:shadow-md transition cursor-pointer';
+    card.onclick=()=>openDetail(r.id);
+
+    const hasSteps = r.steps && r.steps.length;
+    const srcHtml = r.source
+      ? (r.source.startsWith('http')
+          ? `<a href="${escHtml(r.source)}" target="_blank" onclick="event.stopPropagation()" class="text-violet-500 underline text-xs break-all">${escHtml(r.source)}</a>`
+          : `<span class="text-xs text-stone-400">${escHtml(r.source)}</span>`)
+      : '';
+
+    card.innerHTML=`
+      ${r.photo
+        ? `<div class="relative"><img src="${r.photo}" class="recipe-img w-full" /><span class="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full font-medium ${cc} shadow-sm">${escHtml(r.cat)}</span></div>`
+        : `<div class="bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center" style="aspect-ratio:4/3"><span class="text-4xl opacity-30">🍽</span></div>`
+      }
+      <div class="p-4 flex flex-col gap-2 flex-1">
+        <div class="flex items-start justify-between gap-2">
+          <h4 class="font-semibold text-stone-800 text-base leading-tight">${escHtml(r.name)}</h4>
+          ${r.photo?'':`<span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${cc}">${escHtml(r.cat)}</span>`}
+        </div>
+        ${srcHtml?`<p>${srcHtml}</p>`:''}
+        ${r.ingredients.length?`<div class="flex flex-wrap gap-1">
+          ${r.ingredients.slice(0,5).map(i=>`<span class="text-xs bg-stone-50 border border-stone-100 rounded px-1.5 py-0.5">${escHtml(i.name)}</span>`).join('')}
+          ${r.ingredients.length>5?`<span class="text-xs text-stone-400">+${r.ingredients.length-5}</span>`:''}
+        </div>`:''}
+        ${hasSteps?`<p class="text-xs text-stone-400">📋 作り方 ${r.steps.length}ステップ</p>`:''}
+        <div class="flex gap-2 mt-auto pt-2 border-t border-stone-50" onclick="event.stopPropagation()">
+          <button onclick="openDetail('${r.id}')" class="flex-1 text-xs text-center text-stone-500 hover:text-amber-600 transition font-medium">詳細</button>
+          <button onclick="openRecipeModal('${r.id}')" class="flex-1 text-xs text-center text-stone-500 hover:text-amber-600 transition font-medium">編集</button>
+          <button onclick="deleteRecipe('${r.id}')" class="flex-1 text-xs text-center text-stone-500 hover:text-red-500 transition font-medium">削除</button>
+        </div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+// ===== CALENDAR =====
+function setCalView(v) {
+  calView=v;
+  document.getElementById('cal-btn-week').className=`cal-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition ${v==='week'?'bg-white shadow text-amber-600':'text-stone-500 hover:bg-white/60'}`;
+  document.getElementById('cal-btn-month').className=`cal-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition ${v==='month'?'bg-white shadow text-amber-600':'text-stone-500 hover:bg-white/60'}`;
+  renderCalendar();
+}
+function calToday() { calAnchor=new Date(); calAnchor.setHours(0,0,0,0); renderCalendar(); }
+function calNav(d) {
+  if(calView==='week') calAnchor.setDate(calAnchor.getDate()+d*7);
+  else calAnchor.setMonth(calAnchor.getMonth()+d);
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const grid  = document.getElementById('calendar-grid');
+  const today = fmtDate(new Date());
+  let days = [];
+
+  if (calView==='week') {
+    const dow=calAnchor.getDay();
+    const mon=new Date(calAnchor); mon.setDate(calAnchor.getDate()-dow);
+    for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);days.push(d);}
+    const s=days[0],e=days[6];
+    document.getElementById('cal-title').textContent=`${s.getMonth()+1}/${s.getDate()} – ${e.getMonth()+1}/${e.getDate()}`;
+  } else {
+    const y=calAnchor.getFullYear(),m=calAnchor.getMonth();
+    document.getElementById('cal-title').textContent=`${y}年${m+1}月`;
+    const first=new Date(y,m,1),last=new Date(y,m+1,0);
+    const start=new Date(first); start.setDate(1-first.getDay());
+    const end=new Date(last);   end.setDate(last.getDate()+(6-last.getDay()));
+    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) days.push(new Date(d));
+  }
+
+  const mLabel=['朝','昼','夕'];
+  const mKey  =['morning','noon','evening'];
+  const mColor={morning:'bg-amber-50 border-amber-100',noon:'bg-sky-50 border-sky-100',evening:'bg-indigo-50 border-indigo-100'};
+
+  if (calView==='week') {
+    let html=`<div class="grid grid-cols-7 gap-px bg-stone-100 rounded-xl overflow-hidden border border-stone-100">`;
+    days.forEach(d=>{
+      const ds=fmtDate(d),isToday=ds===today;
+      html+=`<div class="bg-white text-center py-2">
+        <span class="text-xs ${jpWeek[d.getDay()]==='日'?'text-red-500':jpWeek[d.getDay()]==='土'?'text-blue-500':'text-stone-500'}">${jpWeek[d.getDay()]}</span>
+        <div class="text-sm font-bold ${isToday?'bg-amber-500 text-white w-7 h-7 rounded-full flex items-center justify-center mx-auto':'text-stone-800 mt-0.5'}">${d.getDate()}</div>
+      </div>`;
+    });
+    html+='</div>';
+    html+=`<div class="grid grid-cols-7 gap-px mt-px bg-stone-100 rounded-xl overflow-hidden border border-stone-100">`;
+    mKey.forEach((mk,mi)=>{
+      days.forEach(d=>{
+        const ds=fmtDate(d),key=`${ds}_${mk}`,rid=meals[key],rec=rid?recipes.find(r=>r.id===rid):null;
+        html+=`<div class="bg-white p-1 meal-slot" onclick="openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')">
+          <div class="text-[10px] text-stone-400 font-medium mb-0.5">${mLabel[mi]}</div>
+          ${rec
+            ?`<div class="text-[11px] ${mColor[mk]} border rounded px-1 py-0.5 leading-tight cursor-pointer hover:opacity-80 transition">${escHtml(rec.name)}</div>`
+            :`<div class="text-[10px] text-stone-200 border border-dashed border-stone-100 rounded h-8 flex items-center justify-center cursor-pointer hover:border-amber-200 hover:text-amber-400 transition">＋</div>`}
+        </div>`;
+      });
+    });
+    html+='</div>';
+    grid.innerHTML=html;
+  } else {
+    const curMonth=calAnchor.getMonth();
+    let html=`<div class="grid grid-cols-7 gap-px bg-stone-100 rounded-xl overflow-hidden border border-stone-100">`;
+    ['日','月','火','水','木','金','土'].forEach((w,i)=>{
+      html+=`<div class="bg-stone-50 text-center py-1.5 text-xs font-medium ${i===0?'text-red-400':i===6?'text-blue-400':'text-stone-400'}">${w}</div>`;
+    });
+    days.forEach(d=>{
+      const ds=fmtDate(d),isToday=ds===today,isCurMonth=d.getMonth()===curMonth;
+      const dayMeals=mKey.map((mk,mi)=>{
+        const key=`${ds}_${mk}`,rid=meals[key],rec=rid?recipes.find(r=>r.id===rid):null;
+        return rec
+          ?`<div onclick="event.stopPropagation();openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')" class="text-[10px] ${mColor[mk]} border rounded px-1 truncate cursor-pointer hover:opacity-80">${mLabel[mi]}: ${escHtml(rec.name)}</div>`
+          :`<div onclick="event.stopPropagation();openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')" class="text-[10px] text-stone-200 hover:text-amber-400 cursor-pointer">${mLabel[mi]}＋</div>`;
+      }).join('');
+      html+=`<div class="bg-white p-1 min-h-[80px] ${!isCurMonth?'opacity-40':''}">
+        <span class="text-xs font-semibold ${isToday?'bg-amber-500 text-white rounded-full w-5 h-5 inline-flex items-center justify-center':'text-stone-600'}">${d.getDate()}</span>
+        <div class="mt-1 space-y-0.5">${dayMeals}</div>
+      </div>`;
+    });
+    html+='</div>';
+    grid.innerHTML=html;
+  }
+}
+
+// ===== MEAL MODAL =====
+function openMealModal(key,label) {
+  currentMealKey=key;
+  document.getElementById('meal-modal-title').textContent=label;
+  document.getElementById('meal-search').value='';
+  renderMealPicker();
+  document.getElementById('meal-modal').classList.remove('hidden');
+}
+function closeMealModal() { document.getElementById('meal-modal').classList.add('hidden'); currentMealKey=null; }
+function renderMealPicker() {
+  const q=document.getElementById('meal-search').value.toLowerCase();
+  const list=document.getElementById('meal-picker-list');
+  const filtered=recipes.filter(r=>!q||r.name.toLowerCase().includes(q));
+  list.innerHTML=filtered.length===0?'<p class="text-center text-stone-400 text-sm py-4">レシピが見つかりません</p>':'';
+  filtered.forEach(r=>{
+    const cc=catColor[r.cat]||catColor['その他'];
+    const btn=document.createElement('button');
+    const isSel=meals[currentMealKey]===r.id;
+    btn.className=`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition ${isSel?'bg-amber-50 border border-amber-200':'hover:bg-stone-50 border border-transparent'}`;
+    btn.innerHTML=`
+      ${r.photo
+        ? `<img src="${r.photo}" class="w-10 h-10 rounded-lg object-cover flex-shrink-0" />`
+        : `<div class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0 text-lg">🍽</div>`}
+      <div class="flex-1 min-w-0">
+        <p class="font-medium truncate">${escHtml(r.name)}</p>
+        <span class="text-xs px-1.5 py-0.5 rounded-full ${cc}">${escHtml(r.cat)}</span>
+      </div>
+      ${isSel?'<span class="text-amber-500 text-sm">✓</span>':''}`;
+    btn.onclick=()=>{meals[currentMealKey]=r.id;save();closeMealModal();renderCalendar();toast(`${r.name}を設定しました`);};
+    list.appendChild(btn);
+  });
+}
+function clearMealSlot() {
+  if(currentMealKey){delete meals[currentMealKey];save();closeMealModal();renderCalendar();toast('献立を削除しました');}
+}
+
+// ===== SHOPPING =====
+function generateShopping() {
+  const from=document.getElementById('shop-from').value,to=document.getElementById('shop-to').value;
+  if(!from||!to||from>to){toast('正しい期間を選択してください','bg-red-500');return;}
+  const agg={};
+  const cur=new Date(from),end=new Date(to);
+  while(cur<=end){
+    const ds=fmtDate(cur);
+    ['morning','noon','evening'].forEach(mk=>{
+      const rid=meals[`${ds}_${mk}`];if(!rid)return;
+      const rec=recipes.find(r=>r.id===rid);if(!rec)return;
+      rec.ingredients.forEach(ing=>{
+        if(!ing.name)return;
+        if(!agg[ing.name])agg[ing.name]={name:ing.name,qtys:[]};
+        if(ing.qty)agg[ing.name].qtys.push(ing.qty);
+      });
+    });
+    cur.setDate(cur.getDate()+1);
+  }
+  shoppingList=Object.values(agg).map(i=>({id:uid(),name:i.name,qty:i.qtys.join(', '),checked:false}));
+  save(); renderShoppingList();
+  document.getElementById('shopping-list-wrap').classList.remove('hidden');
+  toast(`${shoppingList.length}件の食材リストを生成しました`);
+}
+function renderShoppingList() {
+  const list=document.getElementById('shopping-list'),wrap=document.getElementById('shopping-list-wrap');
+  if(shoppingList.length===0){wrap.classList.add('hidden');return;}
+  wrap.classList.remove('hidden'); list.innerHTML='';
+  shoppingList.forEach((item,idx)=>{
+    const row=document.createElement('label');
+    row.className='flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-stone-50 transition';
+    row.innerHTML=`<input type="checkbox" ${item.checked?'checked':''} onchange="toggleShop(${idx})" class="w-4 h-4 rounded accent-amber-500 cursor-pointer" />
+      <span class="flex-1 text-sm ${item.checked?'line-through text-stone-400':''}">${escHtml(item.name)}</span>
+      <span class="text-xs text-stone-400">${escHtml(item.qty)}</span>`;
+    list.appendChild(row);
+  });
+}
+function toggleShop(idx){shoppingList[idx].checked=!shoppingList[idx].checked;save();renderShoppingList();}
+function clearChecked(){shoppingList=shoppingList.filter(i=>!i.checked);save();renderShoppingList();toast('チェック済みを削除しました');}
+
+// ===== INIT =====
+function init() {
+  setCalView('week');
+  switchTab('recipe');
+  const t=new Date();
+  document.getElementById('shop-from').value=fmtDate(t);
+  t.setDate(t.getDate()+6);
+  document.getElementById('shop-to').value=fmtDate(t);
+  if(shoppingList.length) renderShoppingList();
+}
+
+// Backdrop click closes modals
+['recipe-modal','meal-modal','detail-modal'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',function(e){if(e.target===this)this.classList.add('hidden');});
+});
+
+init();
+
+// PWA Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
