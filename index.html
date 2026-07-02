@@ -59,7 +59,7 @@
     <button onclick="openRecipeModal()" class="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium shadow-sm transition">＋ 手動追加</button>
   </div>
   <div class="flex gap-2 mb-4">
-    <input id="recipe-search" oninput="renderRecipes()" type="text" placeholder="レシピ名で検索…" class="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+    <input id="recipe-search" oninput="renderRecipes()" type="text" placeholder="レシピ名・材料で検索…" class="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
     <select id="recipe-filter-cat" onchange="renderRecipes()" class="border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white">
       <option value="">全カテゴリ</option>
       <option>主菜</option><option>副菜</option><option>汁物</option><option>主食</option><option>デザート</option><option>その他</option>
@@ -680,7 +680,11 @@ function renderRecipes() {
   const cat = document.getElementById('recipe-filter-cat').value;
   const list  = document.getElementById('recipe-list');
   const empty = document.getElementById('recipe-empty');
-  const filtered = recipes.filter(r=>(!q||r.name.toLowerCase().includes(q))&&(!cat||r.cat===cat));
+  const filtered = recipes.filter(r=>{
+    const matchQ = !q || r.name.toLowerCase().includes(q) ||
+      (r.ingredients||[]).some(i=>(i.name||'').toLowerCase().includes(q));
+    return matchQ && (!cat||r.cat===cat);
+  });
   list.innerHTML='';
   empty.classList.toggle('hidden', filtered.length>0);
 
