@@ -922,6 +922,52 @@ function clearMealSlot() {
 }
 
 // ===== SHOPPING =====
+// 分量文字列のリストを解析して合計表示に変換
+function summarizeQtys(qtys) {
+  if(!qtys||qtys.length===0) return '';
+  if(qtys.length===1) return qtys[0];
+
+  // 数値＋単位に分解。unitBefore=trueなら「大さじ2」形式
+  const toHalf = s => s.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  const parsed = qtys.map(q=>{
+    const s = q.trim();
+    // 数字が先: "270g", "2個"
+    const m1 = s.match(/^([0-9０-９]+(?:[./／][0-9０-９]+)?)\s*(.*)$/);
+    if(m1) return {num:parseFloat(toHalf(m1[1])), unit:m1[2].trim(), unitBefore:false};
+    // 単位が先: "大さじ2", "小さじ1/2"
+    const m2 = s.match(/^(.*?)([0-9０-９]+(?:[./／][0-9０-９]+)?)$/);
+    if(m2) return {num:parseFloat(toHalf(m2[2])), unit:m2[1].trim(), unitBefore:true};
+    return {num:null, unit:s, unitBefore:false};
+  });
+
+  const fmt = (total, unit, unitBefore) => {
+    const n = Number.isInteger(total) ? String(total) : String(Math.round(total*10)/10);
+    return unitBefore ? `${unit}${n}` : `${n}${unit}`;
+  };
+
+  // 全て同じ単位で数値があれば合計
+  const units = [...new Set(parsed.map(p=>p.unit))];
+  if(units.length===1 && parsed.every(p=>p.num!==null)) {
+    const total = parsed.reduce((s,p)=>s+p.num, 0);
+    return fmt(total, units[0], parsed[0].unitBefore);
+  }
+
+  // 単位ごとにグループ化して合計
+  const byUnit = {};
+  parsed.forEach(p=>{
+    const k = p.unit||'';
+    if(!byUnit[k]) byUnit[k]={nums:[], unitBefore:p.unitBefore};
+    if(p.num!==null) byUnit[k].nums.push(p.num);
+  });
+  return Object.entries(byUnit).map(([unit, v])=>{
+    if(v.nums.length>0){
+      const total=v.nums.reduce((s,n)=>s+n,0);
+      return fmt(total, unit, v.unitBefore);
+    }
+    return unit;
+  }).join('・');
+}
+
 function generateShopping() {
   const from=document.getElementById('shop-from').value,to=document.getElementById('shop-to').value;
   if(!from||!to||from>to){toast('正しい期間を選択してください','bg-red-500');return;}
@@ -942,7 +988,7 @@ function generateShopping() {
     });
     cur.setDate(cur.getDate()+1);
   }
-  shoppingList=Object.values(agg).map(i=>({id:uid(),name:i.name,qty:i.qtys.join(', '),checked:false}));
+  shoppingList=Object.values(agg).map(i=>({id:uid(),name:i.name,qty:summarizeQtys(i.qtys),checked:false}));
   save(); renderShoppingList();
   document.getElementById('shopping-list-wrap').classList.remove('hidden');
   toast(`${shoppingList.length}件の食材リストを生成しました`);
