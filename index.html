@@ -41,7 +41,7 @@
     </div>
     <nav class="flex gap-0.5">
       <button onclick="switchTab('recipe')" id="nav-recipe" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">レシピ</button>
-      <button onclick="switchTab('calendar')" id="nav-calendar" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">カレンダー</button>
+      <button onclick="switchTab('calendar')" id="nav-calendar" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">献立</button>
       <button onclick="switchTab('shopping')" id="nav-shopping" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium transition text-stone-500 hover:bg-amber-50 hover:text-amber-700">買い物</button>
     </nav>
   </div>
@@ -263,17 +263,27 @@
 
 <!-- Meal Picker Modal -->
 <div id="meal-modal" class="fixed inset-0 z-50 hidden modal-bg bg-black/30 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[85vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-stone-100">
-      <h3 id="meal-modal-title" class="font-bold">レシピを選択</h3>
+      <div>
+        <h3 id="meal-modal-title" class="font-bold">レシピを選択</h3>
+        <p class="text-xs text-stone-400 mt-0.5">タップで追加／もう一度タップで削除（最大6品）</p>
+      </div>
       <button onclick="closeMealModal()" class="text-stone-400 hover:text-stone-600 text-xl leading-none">✕</button>
+    </div>
+    <!-- 選択中の品 -->
+    <div id="meal-selected-wrap" class="px-4 pt-3 hidden">
+      <p class="text-xs font-medium text-stone-500 mb-1.5">選択中</p>
+      <div id="meal-selected-list" class="flex flex-wrap gap-1.5 mb-2"></div>
+      <div class="border-b border-stone-100 mb-1"></div>
     </div>
     <div class="p-3">
       <input id="meal-search" oninput="renderMealPicker()" type="text" placeholder="レシピ名で検索…" class="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
     </div>
     <div id="meal-picker-list" class="overflow-y-auto flex-1 px-3 pb-3 space-y-1"></div>
-    <div class="px-5 py-3 border-t border-stone-100">
-      <button onclick="clearMealSlot()" class="w-full text-sm text-red-400 hover:text-red-500 py-1 transition">この枠を削除</button>
+    <div class="px-5 py-3 border-t border-stone-100 flex gap-2">
+      <button onclick="clearMealSlot()" class="flex-1 text-sm text-red-400 hover:text-red-500 py-1.5 border border-red-100 rounded-lg transition">全削除</button>
+      <button onclick="closeMealModal()" class="flex-1 text-sm bg-amber-500 hover:bg-amber-600 text-white py-1.5 rounded-lg font-medium transition">決定</button>
     </div>
   </div>
 </div>
@@ -289,6 +299,9 @@
 let recipes     = JSON.parse(localStorage.getItem('recipes')      || '[]');
 let meals       = JSON.parse(localStorage.getItem('meals')        || '{}');
 let shoppingList= JSON.parse(localStorage.getItem('shoppingList') || '[]');
+
+// 旧形式（string）→ 新形式（array）に変換
+Object.keys(meals).forEach(k=>{ if(typeof meals[k]==='string') meals[k]=[meals[k]]; });
 
 let calView = 'week';
 let calAnchor = new Date(); calAnchor.setHours(0,0,0,0);
@@ -808,11 +821,11 @@ function renderCalendar() {
     html+=`<div class="grid grid-cols-7 gap-px mt-px bg-stone-100 rounded-xl overflow-hidden border border-stone-100">`;
     mKey.forEach((mk,mi)=>{
       days.forEach(d=>{
-        const ds=fmtDate(d),key=`${ds}_${mk}`,rid=meals[key],rec=rid?recipes.find(r=>r.id===rid):null;
+        const ds=fmtDate(d),key=`${ds}_${mk}`,rids=meals[key]||[],recs=rids.map(id=>recipes.find(r=>r.id===id)).filter(Boolean);
         html+=`<div class="bg-white p-1 meal-slot" onclick="openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')">
           <div class="text-[10px] text-stone-400 font-medium mb-0.5">${mLabel[mi]}</div>
-          ${rec
-            ?`<div class="text-[11px] ${mColor[mk]} border rounded px-1 py-0.5 leading-tight cursor-pointer hover:opacity-80 transition">${escHtml(rec.name)}</div>`
+          ${recs.length>0
+            ?recs.map(rec=>`<div class="text-[10px] ${mColor[mk]} border rounded px-1 py-0.5 leading-tight mb-0.5 truncate">${escHtml(rec.name)}</div>`).join('')
             :`<div class="text-[10px] text-stone-200 border border-dashed border-stone-100 rounded h-8 flex items-center justify-center cursor-pointer hover:border-amber-200 hover:text-amber-400 transition">＋</div>`}
         </div>`;
       });
@@ -828,9 +841,9 @@ function renderCalendar() {
     days.forEach(d=>{
       const ds=fmtDate(d),isToday=ds===today,isCurMonth=d.getMonth()===curMonth;
       const dayMeals=mKey.map((mk,mi)=>{
-        const key=`${ds}_${mk}`,rid=meals[key],rec=rid?recipes.find(r=>r.id===rid):null;
-        return rec
-          ?`<div onclick="event.stopPropagation();openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')" class="text-[10px] ${mColor[mk]} border rounded px-1 truncate cursor-pointer hover:opacity-80">${mLabel[mi]}: ${escHtml(rec.name)}</div>`
+        const key=`${ds}_${mk}`,rids=meals[key]||[],recs=rids.map(id=>recipes.find(r=>r.id===id)).filter(Boolean);
+        return recs.length>0
+          ?recs.map(rec=>`<div onclick="event.stopPropagation();openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')" class="text-[10px] ${mColor[mk]} border rounded px-1 truncate cursor-pointer hover:opacity-80">${mLabel[mi]}: ${escHtml(rec.name)}</div>`).join('')
           :`<div onclick="event.stopPropagation();openMealModal('${key}','${d.getMonth()+1}/${d.getDate()} ${mLabel[mi]}')" class="text-[10px] text-stone-200 hover:text-amber-400 cursor-pointer">${mLabel[mi]}＋</div>`;
       }).join('');
       html+=`<div class="bg-white p-1 min-h-[80px] ${!isCurMonth?'opacity-40':''}">
@@ -846,22 +859,44 @@ function renderCalendar() {
 // ===== MEAL MODAL =====
 function openMealModal(key,label) {
   currentMealKey=key;
+  if(!meals[currentMealKey]) meals[currentMealKey]=[];
   document.getElementById('meal-modal-title').textContent=label;
   document.getElementById('meal-search').value='';
   renderMealPicker();
   document.getElementById('meal-modal').classList.remove('hidden');
 }
-function closeMealModal() { document.getElementById('meal-modal').classList.add('hidden'); currentMealKey=null; }
+function closeMealModal() {
+  document.getElementById('meal-modal').classList.add('hidden');
+  save(); renderCalendar();
+  currentMealKey=null;
+}
 function renderMealPicker() {
   const q=document.getElementById('meal-search').value.toLowerCase();
   const list=document.getElementById('meal-picker-list');
+  const selIds=meals[currentMealKey]||[];
   const filtered=recipes.filter(r=>!q||r.name.toLowerCase().includes(q));
+
+  // 選択中バッジ更新
+  const selWrap=document.getElementById('meal-selected-wrap');
+  const selList=document.getElementById('meal-selected-list');
+  if(selIds.length>0){
+    selWrap.classList.remove('hidden');
+    selList.innerHTML=selIds.map(id=>{
+      const r=recipes.find(x=>x.id===id);
+      return r?`<span class="text-xs bg-amber-100 text-amber-800 border border-amber-200 rounded-full px-2 py-0.5 flex items-center gap-1">
+        ${escHtml(r.name)}<button onclick="toggleMealRecipe('${id}')" class="text-amber-400 hover:text-red-500 font-bold leading-none">✕</button>
+      </span>`:'';
+    }).join('');
+  } else { selWrap.classList.add('hidden'); }
+
   list.innerHTML=filtered.length===0?'<p class="text-center text-stone-400 text-sm py-4">レシピが見つかりません</p>':'';
   filtered.forEach(r=>{
     const cc=catColor[r.cat]||catColor['その他'];
     const btn=document.createElement('button');
-    const isSel=meals[currentMealKey]===r.id;
-    btn.className=`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition ${isSel?'bg-amber-50 border border-amber-200':'hover:bg-stone-50 border border-transparent'}`;
+    const isSel=selIds.includes(r.id);
+    const isMax=selIds.length>=6&&!isSel;
+    btn.className=`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition ${isSel?'bg-amber-50 border border-amber-200':isMax?'opacity-40 border border-transparent':'hover:bg-stone-50 border border-transparent'}`;
+    btn.disabled=isMax;
     btn.innerHTML=`
       ${r.photo
         ? `<img src="${r.photo}" class="w-10 h-10 rounded-lg object-cover flex-shrink-0" />`
@@ -870,13 +905,20 @@ function renderMealPicker() {
         <p class="font-medium truncate">${escHtml(r.name)}</p>
         <span class="text-xs px-1.5 py-0.5 rounded-full ${cc}">${escHtml(r.cat)}</span>
       </div>
-      ${isSel?'<span class="text-amber-500 text-sm">✓</span>':''}`;
-    btn.onclick=()=>{meals[currentMealKey]=r.id;save();closeMealModal();renderCalendar();toast(`${r.name}を設定しました`);};
+      ${isSel?'<span class="text-amber-500 font-bold">✓</span>':''}`;
+    btn.onclick=()=>toggleMealRecipe(r.id);
     list.appendChild(btn);
   });
 }
+function toggleMealRecipe(rid) {
+  if(!meals[currentMealKey]) meals[currentMealKey]=[];
+  const idx=meals[currentMealKey].indexOf(rid);
+  if(idx>=0) meals[currentMealKey].splice(idx,1);
+  else if(meals[currentMealKey].length<6) meals[currentMealKey].push(rid);
+  renderMealPicker();
+}
 function clearMealSlot() {
-  if(currentMealKey){delete meals[currentMealKey];save();closeMealModal();renderCalendar();toast('献立を削除しました');}
+  if(currentMealKey){ meals[currentMealKey]=[]; save(); closeMealModal(); toast('献立を削除しました'); }
 }
 
 // ===== SHOPPING =====
@@ -888,12 +930,14 @@ function generateShopping() {
   while(cur<=end){
     const ds=fmtDate(cur);
     ['morning','noon','evening'].forEach(mk=>{
-      const rid=meals[`${ds}_${mk}`];if(!rid)return;
-      const rec=recipes.find(r=>r.id===rid);if(!rec)return;
-      rec.ingredients.forEach(ing=>{
-        if(!ing.name)return;
-        if(!agg[ing.name])agg[ing.name]={name:ing.name,qtys:[]};
-        if(ing.qty)agg[ing.name].qtys.push(ing.qty);
+      const rids=meals[`${ds}_${mk}`]||[];
+      rids.forEach(rid=>{
+        const rec=recipes.find(r=>r.id===rid);if(!rec)return;
+        rec.ingredients.forEach(ing=>{
+          if(!ing.name)return;
+          if(!agg[ing.name])agg[ing.name]={name:ing.name,qtys:[]};
+          if(ing.qty)agg[ing.name].qtys.push(ing.qty);
+        });
       });
     });
     cur.setDate(cur.getDate()+1);
