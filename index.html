@@ -58,12 +58,17 @@
     </button>
     <button onclick="openRecipeModal()" class="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium shadow-sm transition">＋ 手動追加</button>
   </div>
-  <div class="flex gap-2 mb-4">
+  <div class="flex gap-2 mb-3">
     <input id="recipe-search" oninput="renderRecipes()" type="text" placeholder="レシピ名・材料で検索…" class="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
     <select id="recipe-filter-cat" onchange="renderRecipes()" class="border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white">
       <option value="">全カテゴリ</option>
       <option>主菜</option><option>副菜</option><option>汁物</option><option>主食</option><option>デザート</option><option>その他</option>
     </select>
+  </div>
+  <div class="flex gap-2 mb-4">
+    <button onclick="exportBackup()" class="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 hover:bg-stone-100 text-stone-600 text-xs px-3 py-2 rounded-lg font-medium transition">💾 バックアップ保存</button>
+    <button onclick="document.getElementById('restore-input').click()" class="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 hover:bg-stone-100 text-stone-600 text-xs px-3 py-2 rounded-lg font-medium transition">📂 バックアップから復元</button>
+    <input id="restore-input" type="file" accept=".json" class="hidden" onchange="importBackup(event)" />
   </div>
   <div id="recipe-list" class="grid gap-2 grid-cols-2"></div>
   <p id="recipe-empty" class="text-center text-stone-400 py-12 hidden">レシピがまだありません。</p>
@@ -299,6 +304,37 @@ const save = () => {
     toast('保存容量が上限に達しました。写真のないレシピを削除するか、既存レシピの写真を削除してください。', 'bg-red-600');
   }
 };
+
+function exportBackup() {
+  const data = { recipes, meals, shoppingList, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `menuet-backup-${date}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('バックアップを保存しました');
+}
+
+function importBackup(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data.recipes)) throw new Error();
+      if (confirm(`${data.recipes.length}件のレシピを復元します。現在のデータは上書きされます。よろしいですか？`)) {
+        recipes = data.recipes;
+        meals = data.meals || {};
+        shoppingList = data.shoppingList || [];
+        save(); renderRecipes();
+        toast(`${recipes.length}件のレシピを復元しました`);
+      }
+    } catch { toast('ファイルの読み込みに失敗しました', 'bg-red-600'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
 
 // ===== TOAST =====
 let toastTimer;
