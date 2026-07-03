@@ -65,7 +65,7 @@
       <option>主菜</option><option>副菜</option><option>汁物</option><option>主食</option><option>デザート</option><option>その他</option>
     </select>
   </div>
-  <div id="recipe-list" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+  <div id="recipe-list" class="grid gap-2 grid-cols-2"></div>
   <p id="recipe-empty" class="text-center text-stone-400 py-12 hidden">レシピがまだありません。</p>
 </section>
 
@@ -291,9 +291,13 @@ let currentMealKey = null;
 let currentPhotoData = ''; // base64 of current photo being edited
 
 const save = () => {
-  localStorage.setItem('recipes',      JSON.stringify(recipes));
-  localStorage.setItem('meals',        JSON.stringify(meals));
-  localStorage.setItem('shoppingList', JSON.stringify(shoppingList));
+  try {
+    localStorage.setItem('recipes',      JSON.stringify(recipes));
+    localStorage.setItem('meals',        JSON.stringify(meals));
+    localStorage.setItem('shoppingList', JSON.stringify(shoppingList));
+  } catch(e) {
+    toast('保存容量が上限に達しました。写真のないレシピを削除するか、既存レシピの写真を削除してください。', 'bg-red-600');
+  }
 };
 
 // ===== TOAST =====
@@ -341,14 +345,14 @@ async function compressImage(file) {
     reader.onload = ev => {
       const img = new Image();
       img.onload = () => {
-        const MAX = 900;
+        const MAX = 300;
         let w = img.width, h = img.height;
         if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
         else        { if (h > MAX) { w = w * MAX / h; h = MAX; } }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
+        resolve(canvas.toDataURL('image/jpeg', 0.40));
       };
       img.src = ev.target.result;
     };
@@ -691,36 +695,26 @@ function renderRecipes() {
   filtered.forEach(r=>{
     const cc = catColor[r.cat]||catColor['その他'];
     const card = document.createElement('div');
-    card.className='bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden flex flex-col hover:shadow-md transition cursor-pointer';
+    card.className='bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden hover:shadow-md transition cursor-pointer';
     card.onclick=()=>openDetail(r.id);
 
-    const hasSteps = r.steps && r.steps.length;
-    const srcHtml = r.source
-      ? (r.source.startsWith('http')
-          ? `<a href="${escHtml(r.source)}" target="_blank" onclick="event.stopPropagation()" class="text-violet-500 underline text-xs break-all">${escHtml(r.source)}</a>`
-          : `<span class="text-xs text-stone-400">${escHtml(r.source)}</span>`)
-      : '';
-
     card.innerHTML=`
-      ${r.photo
-        ? `<div class="relative"><img src="${r.photo}" class="recipe-img w-full" /><span class="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full font-medium ${cc} shadow-sm">${escHtml(r.cat)}</span></div>`
-        : `<div class="bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center" style="aspect-ratio:4/3"><span class="text-4xl opacity-30">🍽</span></div>`
-      }
-      <div class="p-4 flex flex-col gap-2 flex-1">
-        <div class="flex items-start justify-between gap-2">
-          <h4 class="font-semibold text-stone-800 text-base leading-tight">${escHtml(r.name)}</h4>
-          ${r.photo?'':`<span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${cc}">${escHtml(r.cat)}</span>`}
-        </div>
-        ${srcHtml?`<p>${srcHtml}</p>`:''}
-        ${r.ingredients.length?`<div class="flex flex-wrap gap-1">
-          ${r.ingredients.slice(0,5).map(i=>`<span class="text-xs bg-stone-50 border border-stone-100 rounded px-1.5 py-0.5">${escHtml(i.name)}</span>`).join('')}
-          ${r.ingredients.length>5?`<span class="text-xs text-stone-400">+${r.ingredients.length-5}</span>`:''}
-        </div>`:''}
-        ${hasSteps?`<p class="text-xs text-stone-400">📋 作り方 ${r.steps.length}ステップ</p>`:''}
-        <div class="flex gap-2 mt-auto pt-2 border-t border-stone-50" onclick="event.stopPropagation()">
-          <button onclick="openDetail('${r.id}')" class="flex-1 text-xs text-center text-stone-500 hover:text-amber-600 transition font-medium">詳細</button>
-          <button onclick="openRecipeModal('${r.id}')" class="flex-1 text-xs text-center text-stone-500 hover:text-amber-600 transition font-medium">編集</button>
-          <button onclick="deleteRecipe('${r.id}')" class="flex-1 text-xs text-center text-stone-500 hover:text-red-500 transition font-medium">削除</button>
+      <div class="flex flex-col">
+        ${r.photo
+          ? `<div class="relative"><img src="${r.photo}" class="w-full object-cover" style="aspect-ratio:4/3" /><span class="absolute top-1.5 left-1.5 text-xs px-1.5 py-0.5 rounded-full font-medium ${cc} shadow-sm" style="font-size:10px">${escHtml(r.cat)}</span></div>`
+          : `<div class="bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center" style="height:80px"><span class="text-2xl opacity-20">🍽</span></div>`
+        }
+        <div class="p-2 flex flex-col gap-1">
+          <div class="flex items-start justify-between gap-1">
+            <h4 class="font-semibold text-stone-800 leading-tight" style="font-size:12px">${escHtml(r.name)}</h4>
+            ${r.photo?'':`<span class="rounded-full font-medium flex-shrink-0 ${cc} px-1.5 py-0.5" style="font-size:10px">${escHtml(r.cat)}</span>`}
+          </div>
+          ${r.ingredients.length?`<p class="text-stone-400 truncate" style="font-size:10px">${r.ingredients.slice(0,4).map(i=>escHtml(i.name)).join('・')}</p>`:''}
+          <div class="flex gap-1 pt-1 border-t border-stone-50" onclick="event.stopPropagation()">
+            <button onclick="openDetail('${r.id}')" class="flex-1 text-center text-stone-400 hover:text-amber-600 transition" style="font-size:10px">詳細</button>
+            <button onclick="openRecipeModal('${r.id}')" class="flex-1 text-center text-stone-400 hover:text-amber-600 transition" style="font-size:10px">編集</button>
+            <button onclick="deleteRecipe('${r.id}')" class="flex-1 text-center text-stone-400 hover:text-red-500 transition" style="font-size:10px">削除</button>
+          </div>
         </div>
       </div>`;
     list.appendChild(card);
